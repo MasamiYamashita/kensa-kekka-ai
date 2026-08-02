@@ -1,0 +1,319 @@
+app:
+  description: '検査結果のデータを読込み、履歴グラフの作成を行う。
+
+    一般的な健康上のアドバイスをAIで行うことを目的としたワークフローです。
+
+    '
+  icon: hospital
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: 検査結果AI表示
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/ollama:1.0.0@ae50a2db261bffa7289677f2b0a60e60762ceb187b602113b72425ccbe772dc3
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1784207761338-source-1784207806071-target
+      selected: false
+      source: '1784207761338'
+      sourceHandle: source
+      target: '1784207806071'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1784207806071-source-1784207917735-target
+      selected: false
+      source: '1784207806071'
+      sourceHandle: source
+      target: '1784207917735'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: 1784207917735-source-1784208253499-target
+      selected: false
+      source: '1784207917735'
+      sourceHandle: source
+      target: '1784208253499'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: 1784208253499-source-1784208944881-target
+      source: '1784208253499'
+      sourceHandle: source
+      target: '1784208944881'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: end
+      id: 1784208944881-source-1784209130147-target
+      source: '1784208944881'
+      sourceHandle: source
+      target: '1784209130147'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: ユーザー入力
+        type: start
+        variables: []
+      height: 72
+      id: '1784207761338'
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: ''
+        method: get
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP リクエスト
+        type: http-request
+        url: http://host.docker.internal:8000/trend
+        variables: []
+      height: 136
+      id: '1784207806071'
+      position:
+        x: 369.71245889102715
+        y: 303
+      positionAbsolute:
+        x: 369.71245889102715
+        y: 303
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        code: "import json\n\ndef main(body: str) -> dict:\n    data = json.loads(body)\n\
+          \    lines = []\n    for s in data[\"summary\"]:\n        line = f\"{s['項目名']}:\
+          \ {s['検査結果']} (基準値 {s['基準値']}, {s['判定']}\"\n        if s[\"前回との比較\"]:\n\
+          \            line += f\", 前回より{s['前回との比較']}\"\n        line += \")\"\n \
+          \       lines.append(line)\n    return {\"summary_text\": \"\\n\".join(lines)}"
+        code_language: python3
+        outputs:
+          summary_text:
+            children: null
+            type: string
+        selected: false
+        title: コード実行
+        type: code
+        variables:
+        - value_selector:
+          - '1784207806071'
+          - body
+          value_type: string
+          variable: body
+      height: 51
+      id: '1784207917735'
+      position:
+        x: 80
+        y: 478.9411865092656
+      positionAbsolute:
+        x: 80
+        y: 478.9411865092656
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            num_predict: 8192
+            temperature: 0.7
+          mode: chat
+          name: qwen2.5:14b-instruct
+          provider: langgenius/ollama/ollama
+        prompt_template:
+        - id: 1ee2290f-660e-405b-a0f8-b40a41595c5e
+          role: system
+          text: "以下は血液透析患者の検査結果の要約(JSON)です。\n各項目について、目標値との比較と前回からの変化を踏まえ、\n患者本人にも分かる言葉で短くコメントしてください。\n\
+            \n## データの読み方\n- 「目標値の種別」が「学会目標値」の項目は、日本透析医学会のガイドラインが定める\n  血液透析患者向けの管理目標値と比較している。\n\
+            - 「目標値の種別」が「帳票基準値」の項目は、検査会社の帳票に印字された\n  健常者向けの基準値と比較している。透析患者では尿素窒素やクレアチニンが\n\
+            \  この基準値を上回るのは通常のことなので、異常として強調しないこと。\n- 「注記」がある項目は、その内容を踏まえてコメントすること。\n\
+            - 「判定」と「前回との比較」は計算済みなので、それに反する解釈をしないこと。\n\n## 書き方\n- 各項目1〜2文。専門用語には簡単な言い換えを添える\n\
+            - 薬剤名や医学用語は日本語(カタカナ)で表記する。英字と混ぜてはならない\n- 検査値が示す「状態」の説明にとどめ、特定の薬剤名を挙げた治療の提案はしない\n\
+            - 数値の羅列ではなく、目標範囲との関係と前回からの向きを伝える\n\n## 重要\n- これは医療アドバイスではありません\n- 目標値は学会ガイドラインによる一般的な目標であり、個別の目標は主治医が定めます\n\
+            - 文末に「診断・治療方針は必ず主治医にご確認ください」と明記してください"
+        selected: false
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 87
+      id: '1784208253499'
+      position:
+        x: 369.71245889102715
+        y: 478.9411865092656
+      positionAbsolute:
+        x: 369.71245889102715
+        y: 478.9411865092656
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        code: "import re\n\ndef main(llm_text: str) -> dict:\n    cleaned = re.sub(r\"\
+          <think>.*?</think>\", \"\", llm_text, flags=re.DOTALL).strip()\n    markdown\
+          \ = f\"![検査結果推移](http://localhost:8000/trend_image)\\n\\n{cleaned}\"\n \
+          \   return {\"result\": markdown}"
+        code_language: python3
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: コード実行 2
+        type: code
+        variables:
+        - value_selector:
+          - '1784208253499'
+          - text
+          value_type: string
+          variable: llm_text
+      height: 51
+      id: '1784208944881'
+      position:
+        x: 80
+        y: 612.9411865092657
+      positionAbsolute:
+        x: 80
+        y: 612.9411865092657
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        outputs:
+        - value_selector:
+          - '1784208944881'
+          - result
+          value_type: string
+          variable: result
+        selected: false
+        title: 出力
+        type: end
+      height: 87
+      id: '1784209130147'
+      position:
+        x: 369.71245889102715
+        y: 612.9411865092657
+      positionAbsolute:
+        x: 369.71245889102715
+        y: 612.9411865092657
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    viewport:
+      x: 249.64999999999998
+      y: 26.89116944351406
+      zoom: 0.7
+  rag_pipeline_variables: []

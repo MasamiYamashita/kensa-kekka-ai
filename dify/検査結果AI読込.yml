@@ -1,0 +1,481 @@
+app:
+  description: '検査結果票の画像をAIで解析し、検査項目・数値・検査日を抽出します。
+
+    抽出結果を構造化データとして保存することを目的としたワークフローです。'
+  icon: pill
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: 検査結果AI読込
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/ollama:1.0.0@ae50a2db261bffa7289677f2b0a60e60762ceb187b602113b72425ccbe772dc3
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 20
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: 1783237344461-source-1783249004842-target
+      source: '1783237344461'
+      sourceHandle: source
+      target: '1783249004842'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: end
+      id: 1783249004842-source-1783237527062-target
+      source: '1783249004842'
+      sourceHandle: source
+      target: '1783237527062'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1783236435309-source-1783860022464-target
+      source: '1783236435309'
+      sourceHandle: source
+      target: '1783860022464'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: llm
+      id: 1783860022464-source-1783237344461-target
+      source: '1783860022464'
+      sourceHandle: source
+      target: '1783237344461'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: http-request
+        targetType: http-request
+      id: 1783862479491-source-1783871733616-target
+      source: '1783862479491'
+      sourceHandle: source
+      target: '1783871733616'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: end
+        targetType: http-request
+      id: 1783237527062-source-1783862479491-target
+      source: '1783237527062'
+      sourceHandle: source
+      target: '1783862479491'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: ユーザー入力
+        type: start
+        variables:
+        - allowed_file_extensions: []
+          allowed_file_types:
+          - image
+          allowed_file_upload_methods:
+          - local_file
+          default: ''
+          hide: false
+          hint: ''
+          label: image
+          options: []
+          placeholder: ''
+          required: true
+          type: file
+          variable: image
+      height: 108
+      id: '1783236435309'
+      position:
+        x: -23.794465483422357
+        y: -255.99562864923396
+      positionAbsolute:
+        x: -23.794465483422357
+        y: -255.99562864923396
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            num_ctx: 16384
+            num_predict: 8192
+            temperature: 0
+          mode: chat
+          name: qwen2.5:14b-instruct
+          provider: langgenius/ollama/ollama
+        prompt_template:
+        - id: 6b1b5646-f84b-419c-aaf0-122306ff3091
+          role: system
+          text: "入力は検査報告書をOCRしたタブ区切りテキストです。\n「検査項目\t検査結果\t単位\t基準値」というヘッダー行より下が検査項目の表で、\n\
+            各行は必ず4列あります。空の列は、その欄に何も印字されていないことを意味します。\n\nヘッダー行より下の行を、1行につき1件、上から順にすべてJSONにしてください。\n\
+            JSONのみを出力し、説明文は書かないでください。\n\n## 最も重要な規則\n- 行を省略してはならない。空の列がある行も、見出しに見える行も、必ず1件出力する\n\
+            - 行をまとめたり分割したりしてはならない。入力の行数と出力の件数は必ず一致する\n- 列を移し替えてはならない。1列目はname、2列目はresult、3列目はunit、4列目はrefに入れる\n\
+            - 単位を name に付け足してはならない\n\n## 転記の例(入力5行 → 出力5件。空の列は空文字のまま写す)\n  HBs抗原精密測定\t\
+            陰性　インセイ\t\t\n  IU/mL\t0.05未満\tIU/mL\t0.05未満 陰性\n  HBs抗体精密測定\t\t\t\n  mIU/mL\t\
+            \tmIU/mL\t\n  RPR定性\t\t\t\n→\n  {\"name\":\"HBs抗原精密測定\",\"result\":\"\
+            陰性\",\"unit\":\"\",\"ref\":\"\"}\n  {\"name\":\"IU/mL\",\"result\":\"\
+            0.05未満\",\"unit\":\"IU/mL\",\"ref\":\"0.05未満 陰性\"}\n  {\"name\":\"HBs抗体精密測定\"\
+            ,\"result\":\"\",\"unit\":\"\",\"ref\":\"\"}\n  {\"name\":\"mIU/mL\",\"\
+            result\":\"\",\"unit\":\"mIU/mL\",\"ref\":\"\"}\n  {\"name\":\"RPR定性\"\
+            ,\"result\":\"\",\"unit\":\"\",\"ref\":\"\"}\n\n1列目が単位(IU/mL など)の行も、そのまま\
+            \ name に入れて1件として出力すること。\n直前の行と一緒にしてはならない。統合は後の工程で行うので、ここでは決してしない。\n\n\
+            ## 値の整形(ここだけが変更してよい点)\n- 値は必ず日本語で書く。簡体字(阴 检 结 项 单 值 测 满 磷 など)を使ってはならない\n\
+            - result の先頭にある矢印(↑ ⇓ など)は取り除く。「↑ 43.5」→「43.5」\n- name の末尾にある矢印も取り除く。「Intact↑」→「Intact」\n\
+            - result は数値でも文字列として出力する。「9.70」は \"9.70\" のまま\n- 「0.05以下」「0.05未満」は数値だけを取り出さず全文をそのまま出力する\n\
+            - 「陰性　インセイ」「陽性　ヨウセイ」の読み仮名は除き「陰性」「陽性」とする\n- 「1. 0未満」「13.5~ 17.6」のような数字途中の空白は詰める\n\
+            \n## 項目名\n1列目の表記をそのまま使う。言い換えたり省略したりしてはならない。\n\n## date / time / dialysis\n\
+            ヘッダー行より上に、受付日・報告日・採取日が並んだ行がある。\n必ず「採取日」の直後にある日付と時刻を使い、受付日・報告日の日付は使ってはならない。\n\
+            \  例: 受付日，26/7/20\t報告日\t日26/7/22\t採取日\t'26/7/20 21:00\n      → date は\
+            \ \"26/7/20\"、time は \"21:00\"\ndialysis は、ヘッダー行より上に「透析前」または「透析後」があればその語をそのまま入れる。\n\
+            どちらも無ければ空文字列。\n\n## 出力形式(キー名は必ずこの英字のまま使うこと)\n{\"date\":\"\",\"time\":\"\
+            \",\"dialysis\":\"\",\"items\":[{\"name\":\"\",\"result\":\"\",\"unit\"\
+            :\"\",\"ref\":\"\"}]}"
+        - id: 19198764-e6b0-4f16-ba69-5b08b068b0e5
+          role: user
+          text: '{{#1783860022464.body#}}'
+        - id: 066cd994-69a3-48ae-acb0-8e6b05e4b4e1
+          role: assistant
+          text: ''
+        reasoning_format: separated
+        selected: false
+        structured_output_enabled: false
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 87
+      id: '1783237344461'
+      position:
+        x: 554.1370393559663
+        y: -234.99562864923396
+      positionAbsolute:
+        x: 554.1370393559663
+        y: -234.99562864923396
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        outputs:
+        - value_selector:
+          - '1783249004842'
+          - result
+          value_type: string
+          variable: answer
+        - value_selector:
+          - '1783249004842'
+          - row_check
+          value_type: string
+          variable: row_check
+        - value_selector:
+          - '1783249004842'
+          - item_count
+          value_type: number
+          variable: item_count
+        selected: false
+        title: 出力
+        type: end
+      height: 139
+      id: '1783237527062'
+      position:
+        x: 271.1155553104085
+        y: 22.062165900915645
+      positionAbsolute:
+        x: 271.1155553104085
+        y: 22.062165900915645
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        code: "import json\nimport re\n\n# 1列目がこれらで始まる行は、直前の項目の続きとみなす\nCONTINUATION\
+          \ = (\"IU/mL\", \"mIU/mL\", \"S/CO\", \"定性\", \"Intact\")\nARROWS = \"↑↓⇑⇓⬆⬇\"\
+          \nFOOTER_MARKS = (\"ファルコ\", \"FALCO\", \"株式会社\")\n\n# 帳票の表記 → DBに入れる項目名(固定の対応表なのでコード側で確実に処理する)\n\
+          NAME_MAP = {\n    \"無機リン\": \"リン\",\n    \"無機磷\": \"リン\",\n    \"AST(GOT)\"\
+          : \"AST\",\n    \"ALT(GPT)\": \"ALT\",\n    \"ヘモグロビン量\": \"ヘモグロビン\",\n \
+          \   \"ヘマトクリット値\": \"ヘマトクリット\",\n    \"PTH Intact\": \"PTH\",\n    \"Intact\
+          \ PTH\": \"PTH\",\n}\n\n\ndef tidy(text):\n    \"\"\"矢印・読み仮名・数字途中の空白など、LLMが直し漏らした分を機械的に整える\"\
+          \"\"\n    text = (text if text is not None else \"\")\n    text = str(text).strip().strip(ARROWS).strip()\n\
+          \    text = re.sub(r\"(\\d)\\.\\s+(\\d)\", r\"\\1.\\2\", text)        #\
+          \ 「1. 0未満」→「1.0未満」\n    text = re.sub(r\"~\\s+\", \"~\", text)         \
+          \              # 「13.5~ 17.6」→「13.5~17.6」\n    text = re.sub(r\"[　 ]*(インセイ|ヨウセイ)$\"\
+          , \"\", text)        # 読み仮名を落とす\n    return text.strip()\n\n\ndef count_table_rows(ocr_text):\n\
+          \    \"\"\"ヘッダー行より下、フッターより上の行数。LLMが返すべき件数の期待値\"\"\"\n    lines = (ocr_text\
+          \ or \"\").splitlines()\n    start = None\n    for i, line in enumerate(lines):\n\
+          \        if line.split(\"\\t\")[0].strip() == \"検査項目\":\n            start\
+          \ = i + 1\n            break\n    if start is None:\n        return None\n\
+          \    rows = 0\n    for line in lines[start:]:\n        if any(mark in line\
+          \ for mark in FOOTER_MARKS):\n            break\n        rows += 1\n   \
+          \ return rows\n\n\ndef build_items(raw_items):\n    \"\"\"続きの行を直前の項目に統合し、その後で結果が空の項目を捨てる\"\
+          \"\"\n    merged = []\n    for raw in raw_items:\n        name = tidy(raw.get(\"\
+          name\"))\n        row = {\"name\": name,\n               \"result\": tidy(raw.get(\"\
+          result\")),\n               \"unit\": tidy(raw.get(\"unit\")),\n       \
+          \        \"ref\": tidy(raw.get(\"ref\"))}\n\n        if merged and name.startswith(CONTINUATION):\n\
+          \            parent = merged[-1]\n            if not parent[\"result\"]:\n\
+          \                # 親に結果が無い場合は、親そのものの値として取り込む(PTH + Intact)\n           \
+          \     parent[\"result\"] = row[\"result\"]\n                parent[\"unit\"\
+          ] = row[\"unit\"]\n                parent[\"ref\"] = row[\"ref\"]\n    \
+          \        elif row[\"result\"]:\n                # 親に結果がある場合は、別項目として枝分かれさせる(HBs抗原\
+          \ + IU/mL)\n                branch = dict(row)\n                branch[\"\
+          name\"] = parent[\"name\"] + \" (\" + name + \")\"\n                if not\
+          \ branch[\"unit\"]:\n                    branch[\"unit\"] = name      #\
+          \ 単位欄が空なら括弧内の単位で補う\n                merged.append(branch)\n            continue\
+          \    # 値が無ければ何も足さない\n\n        merged.append(row)\n\n    final = [it for\
+          \ it in merged if it[\"result\"]]   # 未実施と見出しはここで消える\n    for it in final:\n\
+          \        it[\"name\"] = NAME_MAP.get(it[\"name\"], it[\"name\"])\n    return\
+          \ final\n\n\ndef main(text: str, ocr: str) -> dict:\n    cleaned = re.sub(r\"\
+          <think>.*?</think>\", \"\", text or \"\", flags=re.DOTALL)\n    cleaned\
+          \ = re.sub(r\"^```(?:json)?|```$\", \"\", cleaned.strip(), flags=re.MULTILINE).strip()\n\
+          \n    data = json.loads(cleaned)\n    raw_items = data.get(\"items\") or\
+          \ []\n    items = build_items(raw_items)\n\n    expected = count_table_rows(ocr)\n\
+          \    if expected is None or len(raw_items) == expected:\n        row_check\
+          \ = \"OK\"\n    else:\n        row_check = \"NG 転記{}件 / 表{}行\".format(len(raw_items),\
+          \ expected)\n\n    payload = {\n        \"date\": tidy(data.get(\"date\"\
+          )),\n        \"time\": tidy(data.get(\"time\")),\n        \"dialysis\":\
+          \ tidy(data.get(\"dialysis\")),\n        \"items\": items,\n    }\n    return\
+          \ {\n        \"result\": json.dumps(payload, ensure_ascii=False),\n    \
+          \    \"item_count\": len(items),\n        \"row_check\": row_check,\n  \
+          \  }"
+        code_language: python3
+        outputs:
+          item_count:
+            children: null
+            type: number
+          result:
+            children: null
+            type: string
+          row_check:
+            children: null
+            type: string
+        selected: false
+        title: コード実行
+        type: code
+        variables:
+        - value_selector:
+          - '1783237344461'
+          - text
+          value_type: string
+          variable: text
+        - value_selector:
+          - '1783860022464'
+          - body
+          value_type: string
+          variable: ocr
+      height: 51
+      id: '1783249004842'
+      position:
+        x: -17.452357240054084
+        y: 22.062165900915645
+      positionAbsolute:
+        x: -17.452357240054084
+        y: 22.062165900915645
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - file:
+            - '1783236435309'
+            - image
+            id: key-value-149
+            key: file
+            type: file
+            value: ''
+          type: form-data
+        headers: ''
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP リクエスト
+        type: http-request
+        url: http://host.docker.internal:8000/ocr
+        variables: []
+      height: 136
+      id: '1783860022464'
+      position:
+        x: 271.1155553104085
+        y: -234.99562864923396
+      positionAbsolute:
+        x: 271.1155553104085
+        y: -234.99562864923396
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - id: key-value-414
+            key: ''
+            type: text
+            value: '{{#1783249004842.result#}}'
+          type: json
+        headers: ''
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP リクエスト 2
+        type: http-request
+        url: http://host.docker.internal:8000/save
+        variables: []
+      height: 136
+      id: '1783862479491'
+      position:
+        x: 565.8783177172553
+        y: 22.062165900915645
+      positionAbsolute:
+        x: 565.8783177172553
+        y: 22.062165900915645
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data: []
+          type: none
+        headers: ''
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP リクエスト 3
+        type: http-request
+        url: http://host.docker.internal:8000/backup
+        variables: []
+      height: 136
+      id: '1783871733616'
+      position:
+        x: 862.9003871150031
+        y: 22.062165900915645
+      positionAbsolute:
+        x: 862.9003871150031
+        y: 22.062165900915645
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 241
+    viewport:
+      x: -649.4719309877696
+      y: 241.8026676371263
+      zoom: 1.0570180209479714
+  rag_pipeline_variables: []

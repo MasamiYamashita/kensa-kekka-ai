@@ -1,0 +1,23 @@
+# venv本体(このディレクトリ直下に作成されているため)
+Lib/
+Scripts/
+Include/
+share/
+pyvenv.cfg
+
+# 認証情報(絶対にコミットしない)
+client_secret*.json
+token.json
+
+# 検査データ(患者情報を含む)
+lab_results*.db
+result.json
+trend_graph.png
+
+# ログ・キャッシュ
+server.log
+__pycache__/
+*.pyc
+
+# ローカル設定
+.claude/settings.local.json
