@@ -50,6 +50,10 @@ DIALYSIS_TARGETS = {
 NEEDS_CORRECTION = ("カルシウム",)
 
 
+def is_out_of_range(low, high, value):
+    return (low is not None and value < low) or (high is not None and value > high)
+
+
 def parse_reference(raw: str):
     """基準値の文字列から (下限, 上限) を取り出す。片方だけの場合は None。"""
     if not raw:
@@ -83,7 +87,13 @@ def fetch_item(conn, name):
         kinds.append(kind or "")
         if ref:
             l, h = parse_reference(ref)
-            low, high = low or l, high or h
+            if l is not None and h is not None and l > h:
+                continue  # OCR/LLMの誤読で下限>上限になった壊れた基準値は無視する
+            # 日付順に見ているので、最新の妥当な基準値で上書きする(過去の誤読を引きずらない)
+            if l is not None:
+                low = l
+            if h is not None:
+                high = h
 
     # 透析患者の目標値がある項目は、帳票の基準値(健常者向け)より優先する
     if name in DIALYSIS_TARGETS:
@@ -94,7 +104,7 @@ def fetch_item(conn, name):
     return dates, values, kinds, low, high, source
 
 
-def plot_item(ax, name, dates, values, kinds, low, high, source):
+def plot_item(ax, name, dates, values, kinds, low, high, source, auto_added):
     ax.plot(dates, values, color="#a0aec0", linewidth=1.3, zorder=1)  # 線は薄いグレーで繋ぐだけ
 
     if low is not None or high is not None:
@@ -104,7 +114,7 @@ def plot_item(ax, name, dates, values, kinds, low, high, source):
 
     # 透析前=丸、透析後=三角。基準値の外にある点は赤く強調する
     for d, v, kind in zip(dates, values, kinds):
-        out_of_range = (low is not None and v < low) or (high is not None and v > high)
+        out_of_range = is_out_of_range(low, high, v)
         marker = MARKERS.get(kind, "o")
         color = "#e53e3e" if out_of_range else "#2b6cb0"
         ax.plot(d, v, marker=marker, color=color, markersize=7 if kind == "透析後" else 5,
@@ -115,9 +125,15 @@ def plot_item(ax, name, dates, values, kinds, low, high, source):
         ax.set_xlim(dates[0] - timedelta(days=30), dates[0] + timedelta(days=30))
 
     ax.set_title(name, fontsize=12, fontweight="bold")
+    captions = []
     if source == "学会目標値":
         # 帯が健常者の基準値ではなく透析患者の目標値であることを示す
-        ax.set_xlabel("帯は学会の管理目標値", fontsize=7, color="#4a5568")
+        captions.append("帯は学会の管理目標値")
+    if auto_added:
+        # 固定リストに無く、直近値が範囲外だったために自動で追加された項目であることを示す
+        captions.append("直近値が範囲外のため自動表示")
+    if captions:
+        ax.set_xlabel(" / ".join(captions), fontsize=7, color="#4a5568")
     ax.tick_params(axis="x", rotation=45, labelsize=8)
     ax.grid(True, alpha=0.3)
 
@@ -133,11 +149,30 @@ def plot_item(ax, name, dates, values, kinds, low, high, source):
 
 
 def collect_items_data(conn):
+    """固定項目(TARGET_ITEMS)に加え、固定項目に無い項目のうち
+    直近値が判定基準の範囲外だったものを自動で追加する。
+    判定基準(目標値・帳票基準値のいずれも)が無い項目は、判定できないため対象にしない。
+    """
     items_data = []
+    seen = set(TARGET_ITEMS)
+
     for name in TARGET_ITEMS:
         dates, values, kinds, low, high, source = fetch_item(conn, name)
         if dates:
-            items_data.append((name, dates, values, kinds, low, high, source))
+            items_data.append((name, dates, values, kinds, low, high, source, False))
+
+    all_names = [row[0] for row in conn.execute(
+        "SELECT DISTINCT name FROM lab_results WHERE result IS NOT NULL"
+    )]
+    for name in sorted(all_names):
+        if name in seen:
+            continue
+        dates, values, kinds, low, high, source = fetch_item(conn, name)
+        if not dates or (low is None and high is None):
+            continue
+        if is_out_of_range(low, high, values[-1]):
+            items_data.append((name, dates, values, kinds, low, high, source, True))
+
     return items_data
 
 
@@ -147,14 +182,15 @@ def build_figure(items_data):
     fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3.5 * rows))
     axes = axes.flatten() if len(items_data) > 1 else [axes]
 
-    for ax, (name, dates, values, kinds, low, high, source) in zip(axes, items_data):
-        plot_item(ax, name, dates, values, kinds, low, high, source)
+    for ax, (name, dates, values, kinds, low, high, source, auto_added) in zip(axes, items_data):
+        plot_item(ax, name, dates, values, kinds, low, high, source, auto_added)
 
     for ax in axes[len(items_data):]:
         ax.axis("off")
 
     fig.suptitle("検査結果の推移", fontsize=16, fontweight="bold", y=0.99)
-    fig.text(0.5, 0.955, "○ 透析前　△ 透析後　赤色は目標範囲の外", ha="center", fontsize=10, color="#4a5568")
+    fig.text(0.5, 0.955, "○ 透析前　△ 透析後　赤色は目標範囲の外(右下は自動検出項目)",
+             ha="center", fontsize=10, color="#4a5568")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig
 
@@ -162,13 +198,11 @@ def build_figure(items_data):
 def build_summary(items_data):
     """各項目の最新値・目標値との比較・前回との傾向をLLMに渡しやすい形でまとめる"""
     summary = []
-    for name, dates, values, kinds, low, high, source in items_data:
+    for name, dates, values, kinds, low, high, source, auto_added in items_data:
         latest_value = values[-1]
 
-        if low is not None and latest_value < low:
-            judgement = "目標範囲より低い"
-        elif high is not None and latest_value > high:
-            judgement = "目標範囲より高い"
+        if is_out_of_range(low, high, latest_value):
+            judgement = "目標範囲より低い" if low is not None and latest_value < low else "目標範囲より高い"
         else:
             judgement = "範囲内"
 
@@ -199,6 +233,7 @@ def build_summary(items_data):
             "目標値の種別": source,
             "判定": judgement,
             "前回との比較": trend,
+            "固定リスト外の自動検出": auto_added,
         }
         if name in NEEDS_CORRECTION:
             # ガイドラインは補正Ca値での判定を求めているが、ここでは補正前の値を使っている
