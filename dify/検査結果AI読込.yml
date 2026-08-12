@@ -272,7 +272,8 @@ workflow:
           NAME_MAP = {\n    \"無機リン\": \"リン\",\n    \"無機磷\": \"リン\",\n    \"AST(GOT)\"\
           : \"AST\",\n    \"ALT(GPT)\": \"ALT\",\n    \"ヘモグロビン量\": \"ヘモグロビン\",\n \
           \   \"ヘマトクリット値\": \"ヘマトクリット\",\n    \"PTH Intact\": \"PTH\",\n    \"Intact\
-          \ PTH\": \"PTH\",\n}\n\n\ndef tidy(text):\n    \"\"\"矢印・読み仮名・数字途中の空白など、LLMが直し漏らした分を機械的に整える\"\
+          \ PTH\": \"PTH\",\n    \"鉄飽和率（TSAT）\": \"TSAT\",\n    \"鉄飽和率(TSAT)\": \"\
+          TSAT\",\n}\n\n\ndef tidy(text):\n    \"\"\"矢印・読み仮名・数字途中の空白など、LLMが直し漏らした分を機械的に整える\"\
           \"\"\n    text = (text if text is not None else \"\")\n    text = str(text).strip().strip(ARROWS).strip()\n\
           \    text = re.sub(r\"(\\d)\\.\\s+(\\d)\", r\"\\1.\\2\", text)        #\
           \ 「1. 0未満」→「1.0未満」\n    text = re.sub(r\"~\\s+\", \"~\", text)         \
@@ -391,7 +392,7 @@ workflow:
       positionAbsolute:
         x: 271.1155553104085
         y: -234.99562864923396
-      selected: true
+      selected: false
       sourcePosition: right
       targetPosition: left
       type: custom
@@ -475,7 +476,7 @@ workflow:
       type: custom
       width: 241
     viewport:
-      x: -132.91287610135214
-      y: 340.62590859110173
-      zoom: 0.9201876346175647
+      x: 100.63894883751163
+      y: 355.579061238607
+      zoom: 1.2551751408575347
   rag_pipeline_variables: []
