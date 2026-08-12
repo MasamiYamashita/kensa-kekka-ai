@@ -9,7 +9,9 @@
 
 撮影 → OCR → 構造化 → DB保存 → 推移グラフ表示までの一連の流れ。
 
-[![デモ動画を見る](https://img.youtube.com/vi/FhoPOId0iik/hqdefault.jpg)](https://youtu.be/FhoPOId0iik)
+[![デモ動画のサムネイル](https://img.youtube.com/vi/FhoPOId0iik/hqdefault.jpg)](https://youtu.be/FhoPOId0iik)
+
+▶ YouTubeで見る: https://youtu.be/FhoPOId0iik
 
 ---
 
