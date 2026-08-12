@@ -21,3 +21,6 @@ __pycache__/
 
 # ローカル設定
 .claude/settings.local.json
+
+# 手元の確認用スクリプト(DBを直接操作するため公開しない)
+db_test.py
