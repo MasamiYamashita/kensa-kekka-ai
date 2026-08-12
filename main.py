@@ -4,6 +4,7 @@ from rapidocr import RapidOCR
 import cv2
 import numpy as np
 import re
+import statistics
 from save_api import router as save_router  # 別ファイルからrouterを持ってくる
 from trend_api import router as trend_router
 from backup_api import router as backup_router
@@ -61,6 +62,105 @@ def assign_columns(line, bounds):
     return [" ".join(texts) for texts in columns]   # 同じ列に複数あればスペースで繋ぐ
 
 
+# 手持ち撮影の遠近ゆがみで、行は水平にならず傾く。しかも傾きは一定ではなく、
+# ページ上部と下部で変わる(この帳票では上部+0.049〜下部-0.008)。
+# そこで傾きを slope(y) = a + b*y の直線モデルで表し、打ち消してから行にまとめる。
+
+def fit_line(samples):
+    """(x, y)の並びに y = a + b*x を最小二乗で当てる。当てられなければNone"""
+    n = len(samples)
+    if n < 2:
+        return None
+    sx = sum(p[0] for p in samples)
+    sy = sum(p[1] for p in samples)
+    sxx = sum(p[0] ** 2 for p in samples)
+    sxy = sum(p[0] * p[1] for p in samples)
+    denom = n * sxx - sx * sx
+    if abs(denom) < 1e-9:       # xが1点に潰れていると傾きが決まらない
+        return None
+    b = (n * sxy - sx * sy) / denom
+    return (sy - b * sx) / n, b
+
+
+def row_key(it, model):
+    """傾きを打ち消したy。同じ行なら近い値になる"""
+    a, b = model
+    return it["cy"] - (a + b * it["cy"]) * it["cx"]
+
+
+def skew_sharpness(group, slope, bin_size):
+    """その傾きで投影したとき、行がどれだけ鋭く分離するか。大きいほど良い"""
+    hist = {}
+    for it in group:
+        key = int((it["cy"] - slope * it["cx"]) / bin_size)
+        hist[key] = hist.get(key, 0) + 1
+    return sum(count * count for count in hist.values())
+
+
+def estimate_skew(items, bin_size):
+    """射影プロファイル法。ページをy方向の帯に分け、帯ごとに最も行が鋭く分離する
+    傾きを総当たりで探し、その結果を slope(y) にまとめる。
+    検出枠の角度から直接求める方法は、枠が水平寄りに歪むため精度が出なかった"""
+    order = sorted(items, key=lambda it: it["cy"])
+    bands = 5 if len(order) >= 20 else 1
+    per = len(order) / bands
+    measured = []
+    for i in range(bands):
+        group = order[int(i * per):int((i + 1) * per)]
+        if not group:
+            continue
+        best, best_score = 0.0, -1
+        for step in range(-240, 241):           # ±0.12(約±7度)を0.0005刻みで走査
+            slope = step * 0.0005
+            score = skew_sharpness(group, slope, bin_size)
+            if score > best_score:
+                best, best_score = slope, score
+        measured.append((statistics.median(it["cy"] for it in group), best))
+    if len(measured) == 1:
+        return measured[0][1], 0.0              # 帯が1つならyによる変化は求められない
+    return fit_line(measured) or (0.0, 0.0)
+
+
+def refine_skew(rows, items, fallback):
+    """組めた行から実際の傾きを測り直してモデルを作り直す。
+    粗い推定でも大半の行は正しく組めるので、その行を物差しに使える"""
+    span_min = (max(it["x1"] for it in items) - min(it["x0"] for it in items)) * 0.15
+    measured = []
+    for row in rows:
+        xs = [it["cx"] for it in row]
+        if len(row) >= 2 and max(xs) - min(xs) >= span_min:   # 横に広い行ほど傾きが正確に出る
+            line = fit_line([(it["cx"], it["cy"]) for it in row])
+            if line:
+                measured.append((statistics.median(it["cy"] for it in row), line[1]))
+    if len(measured) < 3:
+        return fallback
+    model = fit_line(measured)
+    if model is None:
+        return fallback
+    a, b = model
+    resid = [abs((a + b * y) - slope) for y, slope in measured]
+    cut = statistics.median(resid) * 2.5
+    kept = [p for p, r in zip(measured, resid) if r <= cut]   # 組み損ねた行の影響を落とす
+    return fit_line(kept) or model
+
+
+def group_rows(items, model, tolerance):
+    """傾きを打ち消したyが近いものを同じ行にまとめる。
+    比較相手は行の先頭に固定する。直前の1個と比べると、僅かな差が積み重なって
+    行が数珠つなぎに結合してしまう"""
+    keyed = sorted(((row_key(it, model), it) for it in items), key=lambda p: p[0])
+    rows, current = [], []
+    for key, it in keyed:
+        if not current or abs(current[0][0] - key) < tolerance:
+            current.append((key, it))
+        else:
+            rows.append([p[1] for p in current])
+            current = [(key, it)]
+    if current:
+        rows.append([p[1] for p in current])
+    return rows
+
+
 @app.get("/")
 def read_root():
     return {"message": "Hello, ocr!"}
@@ -90,28 +190,25 @@ def upload_file(file: UploadFile = File(...)):
             text = text.replace(old, new)  # 単語レベルの正規化
         items.append({
             "cy": sum(ys) / 4,            # y中心
+            "cx": sum(xs) / 4,            # x中心(傾きの推定に使う)
             "x0": min(xs),                # 左端
             "x1": max(xs),                # 右端
             "h":  max(ys) - min(ys),      # 高さ
             "text": text,
         })
 
-    items.sort(key=lambda it: it["cy"])   # y中心でソート
+    if not items:
+        return ""
 
-    lines = []          # 完成した行たち(行=itemのリスト)
-    current = []        # いま作りかけの行
+    # 閾値はページ全体の文字高から一度だけ決める。行ごとに動く値だと基準がぶれる
+    med_h = statistics.median(it["h"] for it in items)
+    tolerance = med_h * 0.5
 
-    for it in items:
-        if not current:
-            current.append(it)          # 最初の1個
-        elif (abs(current[-1]["cy"] - it["cy"]) < sum(i["h"] for i in current) / len(current) * 0.5):
-            # itのcyと、currentの平均の要素のcyの差(0.5倍の高さ)で判定
-            current.append(it)
-        else:
-            lines.append(current)       # 行を確定して
-            current = [it]              # 新しい行を始める
-
-    lines.append(current)       # 最終行をlinesに追加
+    # 傾きを粗く推定して一度行にまとめ、その行から傾きを測り直してもう一度まとめる。
+    # 1回目だけでは、行の左端と右端でyが最大35pxずれて別の行に割れることがある
+    model = estimate_skew(items, med_h / 4)
+    model = refine_skew(group_rows(items, model, tolerance), items, model)
+    lines = group_rows(items, model, tolerance)
 
     lines = [sorted(line, key=lambda it: it["x0"]) for line in lines]   # 各行を左から順に並べる
 

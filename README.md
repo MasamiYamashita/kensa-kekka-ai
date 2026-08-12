@@ -7,7 +7,10 @@
 
 ## 🎥 デモ動画
 
-[▶ YouTubeでデモを見る](https://youtu.be/FhoPOId0iik)
+撮影 → OCR → 構造化 → DB保存 → 推移グラフ表示までの一連の流れ。
+
+[![デモ動画を見る](https://img.youtube.com/vi/FhoPOId0iik/hqdefault.jpg)](https://youtu.be/FhoPOId0iik)
+
 ---
 
 ## 課題
