@@ -3,6 +3,7 @@
 import os
 import re
 import sqlite3
+from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_results.db")
 
@@ -91,6 +92,36 @@ def normalize_time(raw: str) -> str:
         return raw  # 想定外の形式はそのまま返す(データを消さない)
 
 
+# 検査日として遡りうる年数。これより古ければ検査日ではないと判断する
+MAX_YEARS_BACK = 20
+
+
+def validate_exam_date(normalized: str) -> None:
+    """検査日として妥当かを確かめる。おかしければValueErrorを投げて保存を止める。
+
+    帳票の日付行はOCRが読めないことがあり(3ページ目で実際に発生)、読む材料が
+    無いとLLMが生年月日を検査日として拾う。'65/12/29生 を拾って 0006-12-29 として
+    保存された事例があるため、静かに通さず落とす
+    """
+    try:
+        parsed = datetime.strptime(normalized, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"検査日として解釈できない値です: {normalized!r}")
+
+    today = datetime.now()
+    if parsed.date() > today.date():
+        raise ValueError(f"検査日が未来の日付です: {normalized}")
+    if parsed.year < today.year - MAX_YEARS_BACK:
+        raise ValueError(f"検査日が古すぎます(生年月日を拾った可能性): {normalized}")
+
+
+def validate_exam_time(normalized: str) -> None:
+    """時刻が空だったり形式が崩れていれば保存を止める。
+    日付を取り違えたときは時刻も一緒に落ちていることが多く、異常の手掛かりになる"""
+    if not re.fullmatch(r"\d{2}:\d{2}(:\d{2})?", normalized):
+        raise ValueError(f"検査時刻として解釈できない値です: {normalized!r}")
+
+
 def parse_value(raw):
     # 数値型・文字列・Noneのどれで来ても扱えるようにする
     if raw is None:
@@ -110,6 +141,8 @@ def save_items(date: str, time: str, dialysis_type: str, items: list[dict]):
     """正規化前のdate/timeを受け取り、DBへ保存する"""
     date = normalize_date(date)
     time = normalize_time(time)
+    validate_exam_date(date)          # 誤った日付で保存すると後から気付きにくいので、ここで止める
+    validate_exam_time(time)
     conn = sqlite3.connect(DB_PATH)   # 呼び出しごとに新しい接続を開く(スレッド安全のため)
     try:
         for item in items:

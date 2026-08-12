@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from save import save_items
 
@@ -15,5 +15,10 @@ class SaveRequest(BaseModel):
 
 @router.post("/save")
 def save_result(payload: SaveRequest):
-    save_items(payload.date, payload.time, payload.dialysis, payload.items)
+    try:
+        save_items(payload.date, payload.time, payload.dialysis, payload.items)
+    except ValueError as e:
+        # 日付や時刻がおかしいまま保存すると後から気付きにくい。
+        # 400で返してワークフローを失敗させ、その場で分かるようにする
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "ok", "saved": len(payload.items)}
