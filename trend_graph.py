@@ -49,6 +49,21 @@ DIALYSIS_TARGETS = {
 # アルブミンが4.0 g/dL未満の場合は補正が必要だが、本ツールは補正前の値で判定している。
 NEEDS_CORRECTION = ("カルシウム",)
 
+# 略号の正式名称。帳票には略号しか印字されないため、ここで補う。
+# LLMに言い換えを生成させたところ「心房ナトリウラーゼペプチド」「パラジアルドスタチン」
+# のような存在しない語を作ったため、確定した知識としてこちらから渡す。
+# 学会目標値と同様に帳票外の知識なので、出所を1箇所にまとめる意図でここに置く。
+FULL_NAMES = {
+    "PTH":   "副甲状腺ホルモン",
+    "h-ANP": "心房性ナトリウム利尿ペプチド",
+    "TIBC":  "総鉄結合能",
+    "TSAT":  "トランスフェリン飽和度",
+    "UIBC":  "不飽和鉄結合能",
+    "MCV":   "平均赤血球容積",
+    "MCH":   "平均赤血球ヘモグロビン量",
+    "MCHC":  "平均赤血球ヘモグロビン濃度",
+}
+
 
 def is_out_of_range(low, high, value):
     return (low is not None and value < low) or (high is not None and value > high)
@@ -235,6 +250,8 @@ def build_summary(items_data):
             "前回との比較": trend,
             "固定リスト外の自動検出": auto_added,
         }
+        if name in FULL_NAMES:
+            row["正式名称"] = FULL_NAMES[name]
         if name in NEEDS_CORRECTION:
             # ガイドラインは補正Ca値での判定を求めているが、ここでは補正前の値を使っている
             row["注記"] = "アルブミンによる補正前の値。本来は補正Ca値で判定する"
