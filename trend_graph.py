@@ -215,7 +215,12 @@ def collect_items_data_n8n(conn):
 def build_figure(items_data):
     cols = 3
     rows = (len(items_data) + cols - 1) // cols
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3.5 * rows))
+    # タイトル+キャプション用に固定でheader_h(インチ)を確保する。
+    # y座標をfigsize全体に対する比率だけで決めていると、行数が少ない(=図が低い)ときに
+    # 絶対的な余白が足りずタイトルとキャプションが重なる(n8n版は表示件数が少ないため顕著)
+    header_h = 1.3
+    fig_height = 3.5 * rows + header_h
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, fig_height))
     axes = axes.flatten() if len(items_data) > 1 else [axes]
 
     for ax, (name, dates, values, kinds, low, high, source, auto_added) in zip(axes, items_data):
@@ -224,10 +229,10 @@ def build_figure(items_data):
     for ax in axes[len(items_data):]:
         ax.axis("off")
 
-    fig.suptitle("検査結果の推移", fontsize=16, fontweight="bold", y=0.99)
-    fig.text(0.5, 0.955, "○ 処置前　△ 処置後　赤色は目標範囲の外(右下は自動検出項目)",
+    fig.suptitle("検査結果の推移", fontsize=16, fontweight="bold", y=1 - 0.35 / fig_height)
+    fig.text(0.5, 1 - 0.75 / fig_height, "○ 処置前　△ 処置後　赤色は目標範囲の外(右下は自動検出項目)",
              ha="center", fontsize=10, color="#4a5568")
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.tight_layout(rect=(0, 0, 1, 1 - header_h / fig_height))
     return fig
 
 
