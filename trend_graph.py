@@ -4,17 +4,20 @@ import base64
 import os
 import re
 import sqlite3
+import textwrap
 from datetime import datetime, timedelta
 from io import BytesIO
 
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 
 matplotlib.rcParams["font.family"] = "Meiryo"  # 日本語表示のため
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "lab_results.db")
+N8N_DB_PATH = os.path.join(BASE_DIR, "lab_results_n8n.db")
 OUTPUT_PATH = os.path.join(BASE_DIR, "trend_graph.png")
 
 # 推移を見たい項目(必要に応じてここを編集する)
@@ -24,19 +27,19 @@ TARGET_ITEMS = [
     "PTH", "アルブミン", "フェリチン", "TSAT",
 ]
 
-# 血液透析患者の管理目標値(下限, 上限)。日本透析医学会ガイドラインによる。
+# 対象者向けの管理目標値(下限, 上限)。関連学会ガイドラインによる。
 #
-#   慢性腎臓病に伴う骨・ミネラル代謝異常の診療ガイドライン 2025年改訂版
-#   (透析会誌 59(4):127-224, 2026)
+#   骨・ミネラル代謝異常の診療ガイドライン 2025年改訂版
+#   (学会誌 59(4):127-224, 2026)
 #     Statement 3.1.2  血清P値      3.5 mg/dL以上 5.5 mg/dL未満
 #     Statement 3.2.1  血清補正Ca値  8.4 mg/dL以上 9.5 mg/dL未満
 #     Statement 4.1.1  intact PTH  240 pg/mL未満の範囲で症例毎に個別化
 #
-#   慢性腎臓病患者における腎性貧血治療のガイドライン 2015年版
-#   (透析会誌 49(2):89-158, 2016)
-#     CQ1  血液透析患者のHb値  週初めの採血で 10 g/dL以上 12 g/dL未満
+#   貧血治療のガイドライン 2015年版
+#   (学会誌 49(2):89-158, 2016)
+#     CQ1  対象者のHb値  週初めの採血で 10 g/dL以上 12 g/dL未満
 #
-# 帳票の基準値は健常者向けのため、透析患者ではこちらを優先して判定する。
+# 帳票の基準値は健常者向けのため、対象者ではこちらを優先して判定する。
 # いずれも集団に対する目標値であり、個別の目標は主治医が定める。
 DIALYSIS_TARGETS = {
     "リン":       (3.5, 5.5),
@@ -85,7 +88,7 @@ def parse_reference(raw: str):
     return None, None
 
 
-MARKERS = {"透析前": "o", "透析後": "^"}
+MARKERS = {"処置前": "o", "処置後": "^"}
 
 
 def fetch_item(conn, name):
@@ -110,7 +113,7 @@ def fetch_item(conn, name):
             if h is not None:
                 high = h
 
-    # 透析患者の目標値がある項目は、帳票の基準値(健常者向け)より優先する
+    # 対象者向けの目標値がある項目は、帳票の基準値(健常者向け)より優先する
     if name in DIALYSIS_TARGETS:
         low, high = DIALYSIS_TARGETS[name]
         source = "学会目標値"
@@ -127,12 +130,12 @@ def plot_item(ax, name, dates, values, kinds, low, high, source, auto_added):
         y1 = high if high is not None else ax.get_ylim()[1]
         ax.axhspan(y0, y1, color="#38a169", alpha=0.12, zorder=0)
 
-    # 透析前=丸、透析後=三角。基準値の外にある点は赤く強調する
+    # 処置前=丸、処置後=三角。基準値の外にある点は赤く強調する
     for d, v, kind in zip(dates, values, kinds):
         out_of_range = is_out_of_range(low, high, v)
         marker = MARKERS.get(kind, "o")
         color = "#e53e3e" if out_of_range else "#2b6cb0"
-        ax.plot(d, v, marker=marker, color=color, markersize=7 if kind == "透析後" else 5,
+        ax.plot(d, v, marker=marker, color=color, markersize=7 if kind == "処置後" else 5,
                  linestyle="none", zorder=5)
 
     if len(dates) == 1:
@@ -142,7 +145,7 @@ def plot_item(ax, name, dates, values, kinds, low, high, source, auto_added):
     ax.set_title(name, fontsize=12, fontweight="bold")
     captions = []
     if source == "学会目標値":
-        # 帯が健常者の基準値ではなく透析患者の目標値であることを示す
+        # 帯が健常者の基準値ではなく対象者向けの目標値であることを示す
         captions.append("帯は学会の管理目標値")
     if auto_added:
         # 固定リストに無く、直近値が範囲外だったために自動で追加された項目であることを示す
@@ -157,7 +160,7 @@ def plot_item(ax, name, dates, values, kinds, low, high, source, auto_added):
     if len(present_kinds) > 1:
         handles = [
             Line2D([0], [0], marker=MARKERS[k], color="#4a5568", linestyle="none",
-                    markersize=7 if k == "透析後" else 5, label=k)
+                    markersize=7 if k == "処置後" else 5, label=k)
             for k in present_kinds
         ]
         ax.legend(handles=handles, fontsize=7, loc="best")
@@ -171,7 +174,7 @@ def collect_items_data(conn):
     items_data = []
     seen = set(TARGET_ITEMS)
 
-    for name in TARGET_ITEMS:
+    for name in sorted(TARGET_ITEMS):
         dates, values, kinds, low, high, source = fetch_item(conn, name)
         if dates:
             items_data.append((name, dates, values, kinds, low, high, source, False))
@@ -182,6 +185,24 @@ def collect_items_data(conn):
     for name in sorted(all_names):
         if name in seen:
             continue
+        dates, values, kinds, low, high, source = fetch_item(conn, name)
+        if not dates or (low is None and high is None):
+            continue
+        if is_out_of_range(low, high, values[-1]):
+            items_data.append((name, dates, values, kinds, low, high, source, True))
+
+    return items_data
+
+
+def collect_items_data_n8n(conn):
+    """n8n監視用: 「常に見せる固定パネル」を持たない。TARGET_ITEMSのような
+    特定領域の項目セットに偏らないよう、診療科を問わず全項目から
+    その時点で判定基準に照らして範囲外だったものだけを対象にする"""
+    items_data = []
+    all_names = [row[0] for row in conn.execute(
+        "SELECT DISTINCT name FROM lab_results WHERE result IS NOT NULL"
+    )]
+    for name in sorted(all_names):
         dates, values, kinds, low, high, source = fetch_item(conn, name)
         if not dates or (low is None and high is None):
             continue
@@ -204,7 +225,7 @@ def build_figure(items_data):
         ax.axis("off")
 
     fig.suptitle("検査結果の推移", fontsize=16, fontweight="bold", y=0.99)
-    fig.text(0.5, 0.955, "○ 透析前　△ 透析後　赤色は目標範囲の外(右下は自動検出項目)",
+    fig.text(0.5, 0.955, "○ 処置前　△ 処置後　赤色は目標範囲の外(右下は自動検出項目)",
              ha="center", fontsize=10, color="#4a5568")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig
@@ -273,6 +294,106 @@ def generate_trend_data():
 
     summary = build_summary(items_data)
     return image_base64, summary
+
+
+def is_chronic(values, low, high):
+    """全履歴が一度も範囲内に入っていない項目は、今回固有の異常ではなく
+    構造的に外れ続けている項目とみなす(特定の項目名に頼らない判定)"""
+    return len(values) >= 2 and all(is_out_of_range(low, high, v) for v in values)
+
+
+def build_n8n_summary(items_data):
+    """build_summaryの結果に「慢性的に基準値外」フラグを付加する(n8n監視用)"""
+    summary = build_summary(items_data)
+    for row, (name, dates, values, kinds, low, high, source, auto_added) in zip(summary, items_data):
+        row["慢性的に基準値外"] = is_chronic(values, low, high)
+    return summary
+
+
+def generate_n8n_data(db_path=N8N_DB_PATH):
+    """n8n監視用: generate_trend_dataと同じ形だが、DBパスを指定でき、
+    項目ごとに「慢性的に基準値外」フラグを付加する。既定はテスト用DB。
+    collect_items_data_n8nを使うため、固定パネルを持たず範囲外の項目だけが対象になる"""
+    conn = sqlite3.connect(db_path)
+    items_data = collect_items_data_n8n(conn)
+    conn.close()
+
+    fig = build_figure(items_data)
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    image_base64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    summary = build_n8n_summary(items_data)
+    return image_base64, summary
+
+
+COMMENT_LINES_PER_PAGE = 32  # A4・fontsize=11でページ下端まであふれずに収まる目安行数
+
+
+def build_comment_pages(comment: str):
+    """所見コメントをA4サイズの図として描画する(PDFの2ページ目以降用)。
+    Markdownをレンダリングするのではなく、見出し記法だけプレーンテキスト向けに整形する。
+    項目数が多いと1ページに収まらないため、あふれたら新しいページに送る"""
+    plain = re.sub(r"^#+\s*", "", comment, flags=re.MULTILINE)
+    blocks = [b for b in plain.split("\n\n") if b.strip()]
+
+    wrapped_blocks = []
+    for block in blocks:
+        # break_on_hyphens=Falseにしないと「h-ANP」等がハイフンの位置で
+        # 「h-」/「ANP」に割れてしまう。空白の無い日本語文はbreak_long_wordsで
+        # 文字数ぎりぎりまで詰めて改行させる
+        wrapped_blocks.append("\n".join(
+            textwrap.fill(line, width=40, break_on_hyphens=False) if line else ""
+            for line in block.split("\n")
+        ))
+
+    pages, current, used = [], [], 0
+    for wb in wrapped_blocks:
+        block_lines = wb.count("\n") + 2  # 本文行数 + 項目間の空行1行分
+        if current and used + block_lines > COMMENT_LINES_PER_PAGE:
+            pages.append("\n\n".join(current))
+            current, used = [], 0
+        current.append(wb)
+        used += block_lines
+    if current:
+        pages.append("\n\n".join(current))
+
+    figs = []
+    for i, page_text in enumerate(pages):
+        fig, ax = plt.subplots(figsize=(8.27, 11.69))  # A4縦
+        ax.axis("off")
+        title = "検査結果 所見" if i == 0 else f"検査結果 所見(続き {i + 1})"
+        ax.text(0.06, 0.95, title, fontsize=18, fontweight="bold",
+                 va="top", transform=ax.transAxes)
+        ax.text(0.06, 0.88, page_text, fontsize=11, va="top", transform=ax.transAxes)
+        figs.append(fig)
+    return figs
+
+
+def generate_n8n_report_pdf(comment: str, db_path=N8N_DB_PATH) -> tuple[bytes, str]:
+    """n8n通知用: 推移グラフ(1ページ目)+所見コメント(2ページ目)のPDFを返す。
+    ファイル名に使えるよう、レポートが対象とする最新の検査日(YYMMDD)も併せて返す"""
+    conn = sqlite3.connect(db_path)
+    items_data = collect_items_data_n8n(conn)
+    conn.close()
+
+    graph_fig = build_figure(items_data)
+    comment_figs = build_comment_pages(comment)
+
+    buf = BytesIO()
+    with PdfPages(buf) as pdf:
+        pdf.savefig(graph_fig)
+        for fig in comment_figs:
+            pdf.savefig(fig)
+    plt.close(graph_fig)
+    for fig in comment_figs:
+        plt.close(fig)
+
+    latest_dates = [dates[-1] for _, dates, *_ in items_data if dates]
+    date_str = max(latest_dates).strftime("%y%m%d") if latest_dates else "unknown"
+
+    return buf.getvalue(), date_str
 
 
 def main():

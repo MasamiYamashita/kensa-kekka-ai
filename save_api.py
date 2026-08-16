@@ -9,7 +9,7 @@ router = APIRouter()
 class SaveRequest(BaseModel):
     date: str          # 採取日 "26/7/20"
     time: str          # 採取時刻 "21:00"
-    dialysis: str = ""  # 透析前 / 透析後
+    dialysis: str = ""  # 帳票の原文をそのまま受け取る。save_items内で正規化される
     items: list[dict]   # {name, result, unit, ref}
 
 

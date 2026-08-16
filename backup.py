@@ -15,6 +15,7 @@ TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 DRIVE_FILENAME = "lab_results_backup"  # 拡張子なし(Googleスプレッドシートとして保存される)
+DRIVE_FILENAME_N8N = "lab_results_n8n_demo"  # n8n版(架空データ)専用。実データのバックアップとは別ファイル
 
 
 def get_credentials():
@@ -41,18 +42,18 @@ def export_csv(db_path: str) -> bytes:
     buf = io.StringIO()
     writer = csv.writer(buf)
     # スプレッドシートは人が読むので、見出しは日本語のままにする
-    writer.writerow(["検査日", "時刻", "透析区分", "項目名", "検査結果", "検査結果_原文", "単位", "基準値"])
+    writer.writerow(["検査日", "時刻", "処置区分", "項目名", "検査結果", "検査結果_原文", "単位", "基準値"])
     writer.writerows(rows)
     return buf.getvalue().encode("utf-8")
 
 
-def backup_to_drive(db_path: str):
+def backup_to_drive(db_path: str, filename: str = DRIVE_FILENAME):
     creds = get_credentials()
     service = build("drive", "v3", credentials=creds)
 
     # 同名ファイルが既にあれば上書き、無ければ新規作成(バックアップを1ファイルに保つ)
     results = service.files().list(
-        q=f"name='{DRIVE_FILENAME}' and trashed=false",
+        q=f"name='{filename}' and trashed=false",
         spaces="drive",
         fields="files(id, name)",
     ).execute()
@@ -65,7 +66,7 @@ def backup_to_drive(db_path: str):
         service.files().update(fileId=files[0]["id"], media_body=media).execute()
     else:
         metadata = {
-            "name": DRIVE_FILENAME,
+            "name": filename,
             "mimeType": "application/vnd.google-apps.spreadsheet",  # CSVをスプレッドシートに変換して保存
         }
         service.files().create(body=metadata, media_body=media).execute()
